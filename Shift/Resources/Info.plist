@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>Shift</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.shift.mac</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Shift</string>
+    <key>CFBundleDisplayName</key>
+    <string>Shift</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>ATSApplicationFontsPath</key>
+    <string>Fonts</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Pixel font: Silkscreen by Jason Kottke (SIL Open Font License).</string>
+
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Shift copies files between your phone and folders on this Mac, including your Desktop.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Shift copies files between your phone and folders on this Mac, including Documents.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Shift saves files from your phone into Downloads and sends files from it to your phone.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>Shift can copy files between your phone and external drives.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Shift connects to your phone over Wi-Fi when you use wireless debugging.</string>
+
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>app.shift.mac.items</string>
+            <key>UTTypeDescription</key>
+            <string>Shift transfer items</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
