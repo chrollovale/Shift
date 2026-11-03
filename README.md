@@ -1,22 +1,49 @@
-# Shift
+<div align="center">
+  <img src="Resources/AppIcon-1024.png" width="100" height="100" alt="Shift App Icon" />
+  <h1>Shift</h1>
+  <p><b>Native macOS replacement for Android File Transfer in pure SwiftUI</b></p>
 
-A native macOS app for moving files between an Android phone and your Mac, in both directions. It's a replacement for Google's Android File Transfer, which is no longer supported.
+  [![Release](https://img.shields.io/github/v/release/chrollovale/Shift?style=flat-square&color=38bdf8)](https://github.com/chrollovale/Shift/releases/latest)
+  [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/chrollovale/Shift)
+  [![Swift](https://img.shields.io/badge/Swift-6.0-FA7343?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
 
-Retro Platinum look (cream paper, black ink, keycap buttons, pixel type), written in SwiftUI. No third-party dependencies.
+  <br />
+  <a href="https://github.com/chrollovale/Shift/releases/latest"><b>📥 Download Shift for macOS (.zip)</b></a>
+</div>
 
-## Build it
+---
+
+A native macOS app for moving files between an Android phone and your Mac, in both directions. It's a modern, reliable replacement for Google's Android File Transfer, which is no longer supported.
+
+Retro Platinum look (cream paper, black ink, keycap buttons, pixel type), written in SwiftUI. Zero third-party dependencies.
+
+---
+
+## 🚀 Quick Install
+
+1. Download **[Shift-v1.0.0-macos.zip](https://github.com/chrollovale/Shift/releases/latest)**.
+2. Unzip and drag `Shift.app` into your `/Applications` folder.
+3. Connect your Android phone with **USB debugging** enabled.
+
+---
+
+## 🛠️ Build From Source
 
 You need a Mac running macOS 13 or newer, plus Apple's developer tools:
 
 ```bash
 xcode-select --install        # once, if you don't have Xcode or the Command Line Tools
+git clone https://github.com/chrollovale/Shift.git
 cd Shift
 ./build.sh --run              # builds build/Shift.app and opens it
 ```
 
-Other options: `./build.sh --install` copies the app to /Applications. `UNIVERSAL=1 ./build.sh` builds for both Apple Silicon and Intel (needs full Xcode).
+Other options: `./build.sh --install` copies the app to `/Applications`. `UNIVERSAL=1 ./build.sh` builds for both Apple Silicon and Intel (needs full Xcode).
 
 The app is signed ad-hoc and built on your own Mac, so Gatekeeper won't complain.
+
+---
 
 ## First launch
 
@@ -25,6 +52,8 @@ The app is signed ad-hoc and built on your own Mac, so Gatekeeper won't complain
 3. That's it. Your phone's storage is on the left, your Mac on the right.
 
 Shift can't use the "File transfer (MTP)" USB mode the old Android File Transfer relied on. macOS has no built-in MTP support, and building one safely needs a physical device to test against. adb works on every Android phone and also gives you wireless transfer.
+
+---
 
 ## Using it
 
@@ -47,12 +76,16 @@ Shift can't use the "File transfer (MTP)" USB mode the old Android File Transfer
 
 Files you copy to the phone's photo folders are announced to Android's media scanner so they appear in Gallery.
 
+---
+
 ## Troubleshooting
 
 - **Phone never shows up:** check that USB debugging is on, try another cable (some are charge-only), and unlock the phone. Revoke old authorisations in Developer options if the Allow prompt doesn't appear.
 - **"Android doesn't allow access to this location":** Android 11+ blocks `Android/data` and `Android/obb` from adb. That's a system rule, not a Shift bug.
 - **macOS asks for access to Downloads, Documents and so on:** allow it. Shift only reads folders you open in it. If you declined earlier, change it in System Settings › Privacy & Security › Files and Folders.
 - **Use a different adb:** choose *Use my own adb…* on the setup screen.
+
+---
 
 ## Project layout
 
@@ -69,3 +102,8 @@ Sources/Shift/
 ```
 
 The pixel font is Silkscreen (SIL Open Font License, included in `Resources/Fonts`).
+
+---
+
+### ⭐ Support the Project
+If Shift made moving files between your Android phone and Mac easier, please give this repository a **Star** — it helps more people find it!
