@@ -344,9 +344,9 @@ struct BrowserPane: View {
                 base = Crumb(title: "Mac", path: "/")
             }
         } else if let card = model.volumes.first(where: { path == $0 || path.hasPrefix($0 + "/") }) {
-            base = Crumb(title: "SD Card", path: card)
-        } else if path == AppModel.phoneHome || path.hasPrefix(AppModel.phoneHome + "/") {
-            base = Crumb(title: "Internal", path: AppModel.phoneHome)
+            base = Crumb(title: model.phonePlaces.first(where: { $0.id == card })?.title ?? "SD Card", path: card)
+        } else if path == model.phoneRoot || path.hasPrefix(model.phoneRoot + "/") {
+            base = Crumb(title: model.phonePlaces.first?.title ?? "Internal", path: model.phoneRoot)
         } else {
             base = Crumb(title: "Phone", path: "/")
         }

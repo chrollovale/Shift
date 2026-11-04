@@ -24,11 +24,17 @@ final class AppModel: ObservableObject {
     @Published var freeBytes: Int64?
     @Published var volumes: [String] = []
     private var connectedSerial: String?
+    private var connectedDeviceID: String?
     private var nameCache: [String: String] = [:]
     private var pollTask: Task<Void, Never>?
+#if SHIFT_ENABLE_MTP
+    private let mtpService = MTPService()
+    @Published private(set) var mtpStorageRoots: [MTPStorage] = []
+#endif
 
     var activeDevice: Device? { devices.first { $0.serial == selectedSerial } }
     var isConnected: Bool { activeDevice?.state == .ready }
+    var canUseADB: Bool { service != nil }
 
     // MARK: Mac pane
 
@@ -47,6 +53,12 @@ final class AppModel: ObservableObject {
 
     static let phoneHome = "/sdcard"
     @Published var phonePath = AppModel.phoneHome
+    var phoneRoot: String {
+#if SHIFT_ENABLE_MTP
+        if activeDevice?.transport == .mtp { return mtpStorageRoots.first?.path ?? "/mtp/0" }
+#endif
+        return Self.phoneHome
+    }
     @Published var phoneEntries: [FileEntry] = []
     @Published var phoneSelection: Set<String> = []
     @Published var phoneError: String?
@@ -112,7 +124,14 @@ final class AppModel: ObservableObject {
         if let url = Self.locateAdb() {
             await useAdb(url)
         } else {
+#if SHIFT_ENABLE_MTP
+            stage = .ready
+            status = "Looking for an MTP phone…"
+            refreshMac()
+            startPolling()
+#else
             stage = .needsTools
+#endif
         }
     }
 
@@ -121,7 +140,14 @@ final class AppModel: ObservableObject {
         await svc.startServer()
         guard await svc.version() != nil else {
             toolsError = "That copy of adb didn't start. If you're on Apple Silicon, make sure Rosetta is installed, or pick another adb."
+#if SHIFT_ENABLE_MTP
+            stage = .ready
+            status = "ADB couldn't start. Looking for an MTP phone…"
+            refreshMac()
+            startPolling()
+#else
             stage = .needsTools
+#endif
             return
         }
         toolsError = nil
@@ -207,18 +233,26 @@ final class AppModel: ObservableObject {
     }
 
     func refreshDevices() async {
-        guard let service = service else { return }
-        var found = await service.devices()
-        for index in found.indices where found[index].state == .ready {
-            let serial = found[index].serial
-            if let cached = nameCache[serial] {
-                found[index].name = cached
-            } else {
-                let resolved = await service.deviceName(serial: serial, fallback: found[index].name)
-                nameCache[serial] = resolved
-                found[index].name = resolved
+        var found: [Device] = []
+        if let service = service {
+            var adbDevices = await service.devices()
+            for index in adbDevices.indices where adbDevices[index].state == .ready {
+                let serial = adbDevices[index].serial
+                if let cached = nameCache[serial] {
+                    adbDevices[index].name = cached
+                } else {
+                    let resolved = await service.deviceName(serial: serial, fallback: adbDevices[index].name)
+                    nameCache[serial] = resolved
+                    adbDevices[index].name = resolved
+                }
             }
+            found.append(contentsOf: adbDevices)
         }
+#if SHIFT_ENABLE_MTP
+        if let mtpDevices = try? MTPService.detectDevices() {
+            found.append(contentsOf: mtpDevices)
+        }
+#endif
         if found != devices { devices = found }
 
         if let selected = selectedSerial, found.contains(where: { $0.serial == selected }) {
@@ -228,8 +262,9 @@ final class AppModel: ObservableObject {
         }
 
         let nowConnected: String? = (activeDevice?.state == .ready) ? activeDevice?.serial : nil
-        if nowConnected != connectedSerial {
-            connectedSerial = nowConnected
+        if nowConnected != connectedDeviceID {
+            connectedDeviceID = nowConnected
+            connectedSerial = activeDevice?.transport == .adb ? nowConnected : nil
             deviceChanged()
         }
     }
@@ -237,8 +272,9 @@ final class AppModel: ObservableObject {
     func selectDevice(_ serial: String) {
         selectedSerial = serial
         let nowConnected: String? = (activeDevice?.state == .ready) ? serial : nil
-        if nowConnected != connectedSerial {
-            connectedSerial = nowConnected
+        if nowConnected != connectedDeviceID {
+            connectedDeviceID = nowConnected
+            connectedSerial = activeDevice?.transport == .adb ? nowConnected : nil
             deviceChanged()
         }
     }
@@ -250,26 +286,76 @@ final class AppModel: ObservableObject {
         phonePath = Self.phoneHome
         volumes = []
         freeBytes = nil
+#if SHIFT_ENABLE_MTP
+        mtpStorageRoots = []
+#endif
         if let device = activeDevice, device.state == .ready {
-            status = "Connected to \(device.name)."
-            refreshPhone()
-            Task {
-                await loadVolumes()
-                await updateFreeSpace()
+            if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+                status = "Connecting to \(device.name) over MTP…"
+                let deviceID = String(device.serial.dropFirst("mtp:".count))
+                Task {
+                    do {
+                        try await mtpService.open(deviceID: deviceID)
+                        let roots = await mtpService.storageRoots()
+                        guard connectedDeviceID == device.serial else { return }
+                        mtpStorageRoots = roots
+                        volumes = Array(mtpStorageRoots.dropFirst().map(\.path))
+                        phonePath = phoneRoot
+                        status = "Connected to \(device.name) over MTP."
+                        refreshPhone()
+                        await updateFreeSpace()
+                    } catch {
+                        phoneError = error.localizedDescription
+                        flash(error.localizedDescription, isError: true)
+                    }
+                }
+#endif
+            } else {
+#if SHIFT_ENABLE_MTP
+                Task { await mtpService.close() }
+#endif
+                status = "Connected to \(device.name)."
+                refreshPhone()
+                Task {
+                    await loadVolumes()
+                    await updateFreeSpace()
+                }
             }
         } else {
+            connectedSerial = nil
+#if SHIFT_ENABLE_MTP
+            Task { await mtpService.close() }
+#endif
             status = devices.isEmpty ? "Waiting for a phone…" : "Check your phone."
         }
     }
 
     private func loadVolumes() async {
-        guard let service = service, let serial = connectedSerial else { return }
+        guard activeDevice?.transport == .adb,
+              let service = service, let serial = connectedSerial else { return }
         volumes = await service.removableVolumes(serial: serial)
     }
 
     func updateFreeSpace() async {
-        guard let service = service, let serial = connectedSerial else { return }
-        freeBytes = await service.freeSpace(serial: serial)
+        if activeDevice?.transport == .adb, let service = service, let serial = connectedSerial {
+            freeBytes = await service.freeSpace(serial: serial)
+            return
+        }
+#if SHIFT_ENABLE_MTP
+        if activeDevice?.transport == .mtp {
+            let deviceID = connectedDeviceID
+            do {
+                let roots = try await mtpService.refreshStorageRoots()
+                guard activeDevice?.transport == .mtp, connectedDeviceID == deviceID else { return }
+                mtpStorageRoots = roots
+                volumes = Array(roots.dropFirst().map(\.path))
+                freeBytes = await mtpService.freeSpace(at: phonePath)
+            } catch {
+                freeBytes = nil
+            }
+        }
+#endif
     }
 
     // MARK: Listing
@@ -312,7 +398,7 @@ final class AppModel: ObservableObject {
     func refreshPhone() {
         phoneRequest += 1
         let token = phoneRequest
-        guard let service = service, let serial = connectedSerial else {
+        guard let selectedDevice = activeDevice, selectedDevice.state == .ready else {
             phoneEntries = []
             phoneLoading = false
             return
@@ -322,7 +408,17 @@ final class AppModel: ObservableObject {
         phoneLoading = true
         Task {
             do {
-                let list = try await service.list(serial: serial, directory: path)
+                let list: [FileEntry]
+                if selectedDevice.transport == .adb {
+                    guard let service = service, let serial = connectedSerial else { throw AdbError(message: "The phone disconnected.") }
+                    list = try await service.list(serial: serial, directory: path)
+                } else {
+#if SHIFT_ENABLE_MTP
+                    list = try await mtpService.list(path)
+#else
+                    throw AdbError(message: "This build doesn't include MTP support.")
+#endif
+                }
                 guard token == phoneRequest else { return }
                 let visible = hidden ? list : list.filter { !$0.name.hasPrefix(".") }
                 phoneEntries = visible.ordered(by: phoneSort)
@@ -352,6 +448,19 @@ final class AppModel: ObservableObject {
     }
 
     var phonePlaces: [Place] {
+#if SHIFT_ENABLE_MTP
+        if activeDevice?.transport == .mtp {
+            guard let first = mtpStorageRoots.first else { return [] }
+            var list = [Place(id: first.path, title: first.name)]
+            for folder in ["DCIM", "Download", "Pictures", "Documents", "Music", "Movies"] {
+                list.append(Place(id: RemotePath.join(first.path, folder), title: folder))
+            }
+            for storage in mtpStorageRoots.dropFirst() {
+                list.append(Place(id: storage.path, title: storage.name))
+            }
+            return list
+        }
+#endif
         var list = [
             Place(id: Self.phoneHome, title: "Internal"),
             Place(id: Self.phoneHome + "/DCIM", title: "DCIM"),
@@ -385,7 +494,7 @@ final class AppModel: ObservableObject {
     func canGoUp(_ pane: Pane) -> Bool {
         switch pane {
         case .mac: return macURL.path != "/"
-        case .phone: return connectedSerial != nil && !([Self.phoneHome] + volumes).contains(phonePath)
+        case .phone: return connectedDeviceID != nil && !([phoneRoot] + volumes).contains(phonePath)
         }
     }
 
@@ -522,13 +631,13 @@ final class AppModel: ObservableObject {
     func resolveConflict(_ prompt: ConflictPrompt, replace: Bool) {
         dialog = nil
         let items = replace ? prompt.items : prompt.items.filter { !prompt.clashes.contains($0.name) }
-        enqueue(items, direction: prompt.direction, destination: prompt.destination)
+        enqueue(items, direction: prompt.direction, destination: prompt.destination, replaceExisting: replace)
     }
 
-    private func enqueue(_ items: [FileEntry], direction: Direction, destination: String) {
+    private func enqueue(_ items: [FileEntry], direction: Direction, destination: String, replaceExisting: Bool = false) {
         guard !items.isEmpty else { return }
         for item in items {
-            jobs.append(TransferJob(entry: item, direction: direction, destinationDir: destination))
+            jobs.append(TransferJob(entry: item, direction: direction, destinationDir: destination, replaceExisting: replaceExisting))
         }
         Task { await runQueue() }
     }
@@ -557,7 +666,7 @@ final class AppModel: ObservableObject {
             job.state = .cancelled
             return
         }
-        guard let service = service, let serial = connectedSerial else {
+        guard let device = activeDevice, device.state == .ready else {
             job.state = .failed("The phone disconnected.")
             return
         }
@@ -570,6 +679,20 @@ final class AppModel: ObservableObject {
         }
         if job.cancelRequested {
             job.state = .cancelled
+            return
+        }
+
+        if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+            await executeMTP(job)
+#else
+            job.state = .failed("This build doesn't include MTP support.")
+#endif
+            return
+        }
+
+        guard let service = service, let serial = connectedSerial else {
+            job.state = .failed("The phone disconnected.")
             return
         }
 
@@ -604,6 +727,54 @@ final class AppModel: ObservableObject {
             job.state = .failed(AdbParse.friendlyError(text))
         }
     }
+
+#if SHIFT_ENABLE_MTP
+    private func executeMTP(_ job: TransferJob) async {
+        let progress = MTPTransferProgress(totalBytes: job.totalBytes) { [weak job] sent, total in
+            Task { @MainActor [weak job] in
+                guard let job else { return }
+                job.doneBytes = sent
+                if total > 0 { job.totalBytes = total }
+            }
+        }
+        job.mtpProgress = progress
+        do {
+            switch job.direction {
+            case .toPhone:
+                try await mtpService.upload(
+                    localPath: job.sourcePath,
+                    to: job.destinationDir,
+                    name: job.name,
+                    isDirectory: job.isDirectory,
+                    replaceExisting: job.replaceExisting,
+                    progress: progress
+                )
+            case .toMac:
+                let localURL = URL(fileURLWithPath: job.destinationDir)
+                    .appendingPathComponent(job.name, isDirectory: job.isDirectory)
+                if job.replaceExisting, FileManager.default.fileExists(atPath: localURL.path) {
+                    try FileManager.default.removeItem(at: localURL)
+                }
+                try await mtpService.download(
+                    remotePath: job.sourcePath,
+                    to: localURL,
+                    isDirectory: job.isDirectory,
+                    progress: progress
+                )
+            }
+            if job.cancelRequested {
+                job.state = .cancelled
+            } else {
+                if let total = job.totalBytes { job.doneBytes = total }
+                job.speed = 0
+                job.state = .done
+            }
+        } catch {
+            job.state = job.cancelRequested ? .cancelled : .failed(error.localizedDescription)
+        }
+        job.mtpProgress = nil
+    }
+#endif
 
     /// Polls the destination while adb works, so the progress bar and speed readout are live.
     private func watchProgress(_ job: TransferJob, serial: String, service: AdbService) async {
@@ -647,6 +818,9 @@ final class AppModel: ObservableObject {
             job.state = .cancelled
         } else {
             job.command?.cancel()
+#if SHIFT_ENABLE_MTP
+            job.mtpProgress?.cancel()
+#endif
         }
     }
 
@@ -710,7 +884,7 @@ final class AppModel: ObservableObject {
 
     /// Pulls one item into a temporary folder so Finder can copy it from there.
     private func pullForDrag(_ entry: FileEntry) async -> URL? {
-        guard let service = service, let serial = connectedSerial else { return nil }
+        guard let device = activeDevice, device.state == .ready else { return nil }
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("Shift-" + UUID().uuidString, isDirectory: true)
         do {
@@ -719,8 +893,23 @@ final class AppModel: ObservableObject {
             return nil
         }
         status = "Fetching " + entry.name + " from your phone…"
+        let result = folder.appendingPathComponent(entry.name, isDirectory: entry.isDirectory)
+        if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+            do {
+                try await mtpService.download(remotePath: entry.path, to: result, isDirectory: entry.isDirectory, progress: nil)
+                status = "Copied " + entry.name + "."
+                return result
+            } catch {
+                flash(error.localizedDescription, isError: true)
+                return nil
+            }
+#else
+            return nil
+#endif
+        }
+        guard let service = service, let serial = connectedSerial else { return nil }
         let output = await service.pullCommand(serial: serial, remote: entry.path, localDirectory: folder.path).run()
-        let result = folder.appendingPathComponent(entry.name)
         if output.succeeded && FileManager.default.fileExists(atPath: result.path) {
             status = "Copied " + entry.name + "."
             return result
@@ -826,11 +1015,21 @@ final class AppModel: ObservableObject {
                 flash("Couldn't create the folder: \(error.localizedDescription)", isError: true)
             }
         case .phone:
-            guard let service = service, let serial = connectedSerial else { return }
-            let path = RemotePath.join(phonePath, name)
+            guard let device = activeDevice, device.state == .ready else { return }
+            let destination = phonePath
             Task {
                 do {
-                    try await service.makeDirectory(serial: serial, path: path)
+                    if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+                        try await mtpService.makeDirectory(name, in: destination)
+#else
+                        throw AdbError(message: "This build doesn't include MTP support.")
+#endif
+                    } else {
+                        guard let service = service, let serial = connectedSerial else { throw AdbError(message: "The phone disconnected.") }
+                        let path = RemotePath.join(destination, name)
+                        try await service.makeDirectory(serial: serial, path: path)
+                    }
                     refreshPhone()
                 } catch {
                     flash(error.localizedDescription, isError: true)
@@ -840,14 +1039,23 @@ final class AppModel: ObservableObject {
     }
 
     func renameOnPhone(_ entry: FileEntry, to raw: String) {
-        guard let name = validName(raw), let service = service, let serial = connectedSerial else {
+        guard let name = validName(raw), let device = activeDevice, device.state == .ready else {
             flash("That name won't work.", isError: true)
             return
         }
         let target = RemotePath.join(RemotePath.parent(of: entry.path), name)
         Task {
             do {
-                try await service.rename(serial: serial, from: entry.path, to: target)
+                if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+                    try await mtpService.rename(entry.path, to: name)
+#else
+                    throw AdbError(message: "This build doesn't include MTP support.")
+#endif
+                } else {
+                    guard let service = service, let serial = connectedSerial else { throw AdbError(message: "The phone disconnected.") }
+                    try await service.rename(serial: serial, from: entry.path, to: target)
+                }
                 refreshPhone()
             } catch {
                 flash(error.localizedDescription, isError: true)
@@ -856,12 +1064,21 @@ final class AppModel: ObservableObject {
     }
 
     func deleteFromPhone(_ entries: [FileEntry]) {
-        guard let service = service, let serial = connectedSerial else { return }
+        guard let device = activeDevice, device.state == .ready else { return }
         Task {
             var failure: String?
             for entry in entries {
                 do {
-                    try await service.delete(serial: serial, path: entry.path)
+                    if device.transport == .mtp {
+#if SHIFT_ENABLE_MTP
+                        try await mtpService.delete(entry.path)
+#else
+                        throw AdbError(message: "This build doesn't include MTP support.")
+#endif
+                    } else {
+                        guard let service = service, let serial = connectedSerial else { throw AdbError(message: "The phone disconnected.") }
+                        try await service.delete(serial: serial, path: entry.path)
+                    }
                 } catch {
                     failure = error.localizedDescription
                 }

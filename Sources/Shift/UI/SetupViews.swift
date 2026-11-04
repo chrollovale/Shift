@@ -105,9 +105,14 @@ struct ConnectView: View {
 
             VStack(alignment: .leading, spacing: 11) {
                 StepRow(number: 1, text: "Plug your phone into this Mac with a USB cable.")
+#if SHIFT_ENABLE_MTP
+                StepRow(number: 2, text: "On the phone's USB notification, choose File transfer (MTP). Keep the phone unlocked.")
+                StepRow(number: 3, text: "MTP doesn't need USB debugging. For ADB and Wi-Fi, enable USB debugging in Developer options and tap Allow.")
+#else
                 StepRow(number: 2, text: "On the phone, open Settings › About phone and tap Build number 7 times.")
                 StepRow(number: 3, text: "Open Settings › System › Developer options and turn on USB debugging.")
                 StepRow(number: 4, text: "Tap Allow on the “Allow USB debugging?” prompt.")
+#endif
             }
             .frame(width: 400, alignment: .leading)
 
@@ -118,8 +123,20 @@ struct ConnectView: View {
                     .foregroundColor(waiting.warning ? Palette.bad : Palette.inkSoft)
             }
 
-            Button("CONNECT OVER WI-FI…") { model.dialog = .wireless }
-                .buttonStyle(KeyButtonStyle(compact: true))
+#if SHIFT_ENABLE_MTP
+            Text("MTP devices appear in the menu above when Shift detects them.")
+                .font(Fonts.body(11))
+                .foregroundColor(Palette.inkSoft)
+                .multilineTextAlignment(.center)
+                .frame(width: 400)
+#endif
+            if model.canUseADB {
+                Button("CONNECT OVER WI-FI…") { model.dialog = .wireless }
+                    .buttonStyle(KeyButtonStyle(compact: true))
+            } else {
+                Button("DOWNLOAD ADB TOOLS") { model.installTools() }
+                    .buttonStyle(KeyButtonStyle(compact: true))
+            }
         }
         .padding(30)
         .frame(width: 500)

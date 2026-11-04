@@ -16,13 +16,13 @@
 
 A native macOS app for moving files between an Android phone and your Mac, in both directions. It's a modern, reliable replacement for Google's Android File Transfer, which is no longer supported.
 
-Retro Platinum look (cream paper, black ink, keycap buttons, pixel type), written in SwiftUI. Zero third-party dependencies.
+Retro Platinum look (cream paper, black ink, keycap buttons, pixel type), written in SwiftUI. The ADB backend has no extra runtime dependencies; optional USB MTP support uses `libmtp`.
 
 ---
 
 ## 🚀 Quick Install
 
-1. Download **[Shift-v1.0.0-macos.zip](https://github.com/chrollovale/Shift/releases/latest)**.
+1. Download **[Shift-v1.1.0-macos.zip](https://github.com/chrollovale/Shift/releases/latest)**.
 2. Unzip and drag `Shift.app` into your `/Applications` folder.
 3. Connect your Android phone with **USB debugging** enabled.
 
@@ -30,16 +30,19 @@ Retro Platinum look (cream paper, black ink, keycap buttons, pixel type), writte
 
 ## 🛠️ Build From Source
 
-You need a Mac running macOS 13 or newer, plus Apple's developer tools:
+You need a Mac running macOS 13 or newer, Apple's developer tools, and (for MTP support) Homebrew:
 
 ```bash
 xcode-select --install        # once, if you don't have Xcode or the Command Line Tools
+brew install libmtp           # optional: enables USB File Transfer (MTP) support
 git clone https://github.com/chrollovale/Shift.git
 cd Shift
 ./build.sh --run              # builds build/Shift.app and opens it
 ```
 
-Other options: `./build.sh --install` copies the app to `/Applications`. `UNIVERSAL=1 ./build.sh` builds for both Apple Silicon and Intel (needs full Xcode).
+`build.sh` enables MTP when `pkg-config` can find `libmtp`; otherwise it builds the ADB-only version. For a direct SwiftPM build, use `SHIFT_ENABLE_MTP=1 swift build` after installing `libmtp`. Other options: `./build.sh --install` copies the app to `/Applications`. `UNIVERSAL=1 ./build.sh` builds for both Apple Silicon and Intel (needs full Xcode).
+
+Homebrew is needed to build the MTP-enabled app. `build.sh` copies `libmtp` and its `libusb` dependency into the app bundle, so the release app does not need Homebrew on the Mac running it.
 
 The app is signed ad-hoc and built on your own Mac, so Gatekeeper won't complain.
 
@@ -47,11 +50,9 @@ The app is signed ad-hoc and built on your own Mac, so Gatekeeper won't complain
 
 ## First launch
 
-1. **Platform Tools.** Shift moves files with `adb`, Google's Android bridge. If it isn't on your Mac, click **Download Tools** (about 12 MB, one time). If you already have adb from Homebrew or Android Studio, Shift finds it by itself.
-2. **Phone setup, once.** On the phone, open Settings › About phone and tap *Build number* 7 times. Then open Settings › System › Developer options and turn on **USB debugging**. Plug in the cable and tap **Allow** on the phone.
-3. That's it. Your phone's storage is on the left, your Mac on the right.
-
-Shift can't use the "File transfer (MTP)" USB mode the old Android File Transfer relied on. macOS has no built-in MTP support, and building one safely needs a physical device to test against. adb works on every Android phone and also gives you wireless transfer.
+1. **MTP over USB.** In an MTP-enabled build, connect the phone, unlock it, and choose **File transfer (MTP)** in its USB notification. Shift finds it without USB debugging; select it from the device menu.
+2. **ADB and Wi-Fi.** Shift also uses Google's Android Platform Tools. If `adb` isn't on your Mac, click **Download Tools** (about 12 MB, one time). Enable USB debugging on the phone and tap **Allow** to use USB ADB or Android 11+ wireless debugging.
+3. Your phone's storage is on the left, your Mac on the right. ADB and MTP devices appear as separate choices if both transports are available.
 
 ---
 
@@ -64,6 +65,7 @@ Shift can't use the "File transfer (MTP)" USB mode the old Android File Transfer
 - The quick-access chips above each list jump to DCIM, Download, Documents and the like. An SD card gets its own chip.
 - Transfers queue up at the bottom with live progress, speed and a cancel button. If a name already exists you choose between replacing and skipping.
 - **Wi-Fi:** the device menu in the title bar has *Connect over Wi-Fi…* for Android 11 and newer (Developer options › Wireless debugging).
+- **MTP:** browse and transfer over USB using the phone's standard File transfer mode. MTP devices show an `(MTP)` marker in the device menu; ADB devices show `(ADB)`.
 
 | Shortcut | Action |
 | --- | --- |
@@ -74,13 +76,14 @@ Shift can't use the "File transfer (MTP)" USB mode the old Android File Transfer
 | ⌥⇧⌘N | New folder on Mac |
 | ⇧⌘. | Show hidden files |
 
-Files you copy to the phone's photo folders are announced to Android's media scanner so they appear in Gallery.
+With ADB, Shift announces new files in photo folders to Android's media scanner so they appear in Gallery. MTP uploads are handled by the phone's MTP service.
 
 ---
 
 ## Troubleshooting
 
 - **Phone never shows up:** check that USB debugging is on, try another cable (some are charge-only), and unlock the phone. Revoke old authorisations in Developer options if the Allow prompt doesn't appear.
+- **MTP phone never shows up:** make sure this build was made with `libmtp`, unlock the phone, choose **File transfer (MTP)** in USB settings, and close other apps that may already be using the phone's MTP connection.
 - **"Android doesn't allow access to this location":** Android 11+ blocks `Android/data` and `Android/obb` from adb. That's a system rule, not a Shift bug.
 - **macOS asks for access to Downloads, Documents and so on:** allow it. Shift only reads folders you open in it. If you declined earlier, change it in System Settings › Privacy & Security › Files and Folders.
 - **Use a different adb:** choose *Use my own adb…* on the setup screen.
@@ -96,9 +99,10 @@ Resources/                    Info.plist, AppIcon.icns, Silkscreen pixel font
 Tools/make_icon.py            regenerates the icon (needs Pillow)
 Sources/Shift/
   ShiftApp.swift              app entry, window, menu commands
-  Core/                       adb wrapper, output parsing, local file helpers
+  Core/                       adb and MTP backends, parsing, local file helpers
   App/                        AppModel (all state and actions), shared types
   UI/                         theme, panes, transfer tray, setup screens, dialogs
+Sources/ShiftMTPBridge/       small C bridge to libmtp (optional build target)
 ```
 
 The pixel font is Silkscreen (SIL Open Font License, included in `Resources/Fonts`).

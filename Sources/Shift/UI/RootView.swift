@@ -88,8 +88,10 @@ struct DeviceMenu: View {
                     Text(menuTitle(for: device))
                 }
             }
-            Divider()
-            Button("Connect over Wi-Fi…") { model.dialog = .wireless }
+            if model.canUseADB {
+                Divider()
+                Button("Connect over Wi-Fi…") { model.dialog = .wireless }
+            }
             if model.activeDevice?.isWireless == true {
                 Button("Disconnect Wi-Fi Device") { model.disconnectWireless() }
             }
@@ -120,6 +122,7 @@ struct DeviceMenu: View {
 
     private func menuTitle(for device: Device) -> String {
         var title = (device.serial == model.selectedSerial ? "✓  " : "") + device.name
+        title += device.transport == .mtp ? "  (MTP)" : "  (ADB)"
         switch device.state {
         case .ready: break
         case .unauthorized: title += "  (waiting for Allow)"

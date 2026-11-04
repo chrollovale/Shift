@@ -59,6 +59,7 @@ enum Dialog: Identifiable {
 }
 
 /// One item travelling between Mac and phone.
+@MainActor
 final class TransferJob: ObservableObject, Identifiable {
     enum State: Equatable {
         case queued
@@ -74,6 +75,7 @@ final class TransferJob: ObservableObject, Identifiable {
     let sourcePath: String
     let destinationDir: String
     let isDirectory: Bool
+    let replaceExisting: Bool
 
     @Published var totalBytes: Int64?
     @Published var doneBytes: Int64 = 0
@@ -82,13 +84,17 @@ final class TransferJob: ObservableObject, Identifiable {
 
     var command: Command?
     var cancelRequested = false
+#if SHIFT_ENABLE_MTP
+    var mtpProgress: MTPTransferProgress?
+#endif
 
-    init(entry: FileEntry, direction: Direction, destinationDir: String) {
+    init(entry: FileEntry, direction: Direction, destinationDir: String, replaceExisting: Bool = false) {
         self.name = entry.name
         self.direction = direction
         self.sourcePath = entry.path
         self.destinationDir = destinationDir
         self.isDirectory = entry.isDirectory
+        self.replaceExisting = replaceExisting
         // Folders get measured when their turn comes.
         self.totalBytes = entry.isDirectory ? nil : entry.size
     }

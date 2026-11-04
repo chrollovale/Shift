@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Models
 
-struct FileEntry: Identifiable, Hashable {
+struct FileEntry: Identifiable, Hashable, Sendable {
     let path: String
     let name: String
     let isDirectory: Bool
@@ -39,22 +39,36 @@ struct FileEntry: Identifiable, Hashable {
     }
 }
 
-enum DeviceState: String {
+enum DeviceState: String, Sendable {
     case ready
     case unauthorized
     case offline
     case unknown
 }
 
-struct Device: Identifiable, Hashable {
+enum DeviceTransport: String, Sendable {
+    case adb
+    case mtp
+}
+
+struct Device: Identifiable, Hashable, Sendable {
     let serial: String
     var state: DeviceState
     var name: String
+    var transport: DeviceTransport
+
+    init(serial: String, state: DeviceState, name: String, transport: DeviceTransport = .adb) {
+        self.serial = serial
+        self.state = state
+        self.name = name
+        self.transport = transport
+    }
 
     var id: String { serial }
 
     /// Wi-Fi devices show up as "192.168.1.20:5555" or "adb-XXXX._adb-tls-connect._tcp".
     var isWireless: Bool {
+        guard transport == .adb else { return false }
         if serial.hasPrefix("emulator-") { return false }
         return serial.contains(":") || serial.contains("._adb")
     }
